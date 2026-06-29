@@ -1,26 +1,49 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-primary-blue: #066AC9;
+  --color-primary-hover: #055AAB;
+  
+  --color-sidebar-bg: #EDEDED;
+  --color-main-bg: #FFFFFF;
+  
+  --color-text-primary: #1F2022;
+  --color-text-secondary: #989898;
+  --color-text-muted: #B3B3B3;
+  
+  --color-success: #538B19;
+  --color-error: #D32F2F;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: var(--color-main-bg);
+  --foreground: var(--color-text-primary);
+}
+
+/* Selector-based Dark Mode */
+.dark {
+  --background: #121212;
+  --foreground: #E0E0E0;
+  --color-sidebar-bg: #1A1A1A;
+  --color-text-primary: #E0E0E0;
+  --color-main-bg: #121212;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.bg-secondary-gradient {
+  background: linear-gradient(92.91deg, #1BA9BC, #2966C1);
 }

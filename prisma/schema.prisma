@@ -1,0 +1,218 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+enum Role {
+  STUDENT
+  COUNSELOR
+  ADMIN
+}
+
+enum SessionStatus {
+  ACTIVE
+  PENDING_ESCALATION
+  ESCALATED_ACTIVE
+  CLOSED
+}
+
+enum SenderType {
+  USER
+  AI
+  COUNSELOR
+  SYSTEM
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  EMBEDDED
+  FAILED
+}
+
+model User {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email         String?   @unique @db.VarChar(255)
+  password_hash String?   @db.VarChar(255)
+  role          Role      @default(STUDENT)
+  created_at    DateTime  @default(now())
+  last_login    DateTime?
+
+  // Relations
+  sessions              Session[]             @relation("UserSessions")
+  escalated_sessions    Session[]             @relation("CounselorSessions")
+  refresh_tokens        RefreshToken[]
+  notifications         Notification[]
+  audit_events          AuditEvent[]          @relation("AuditActor")
+  system_logs           SystemAuditLog[]      @relation("LogActor")
+  uploaded_documents    UploadedDocument[]
+  student_profile       StudentProfile?
+  counselor_performance CounselorPerformance?
+}
+
+model Session {
+  id           String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id      String        @db.Uuid
+  counselor_id String?       @db.Uuid
+  title        String        @default("New Chat") @db.VarChar(150)
+  status       SessionStatus @default(ACTIVE)
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @default(now()) @updatedAt
+
+  // Relations
+  user      User      @relation("UserSessions", fields: [user_id], references: [id])
+  counselor User?     @relation("CounselorSessions", fields: [counselor_id], references: [id])
+  messages  Message[]
+
+  @@index([user_id])
+}
+
+model Message {
+  id          String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  session_id  String     @db.Uuid
+  sender_type SenderType
+  content     String     @db.Text
+  created_at  DateTime   @default(now())
+
+  // Relations
+  session  Session          @relation(fields: [session_id], references: [id])
+  metrics  MessageMetric?
+  feedback MessageFeedback?
+
+  @@index([session_id])
+  @@index([created_at])
+}
+
+model MessageMetric {
+  id                String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  message_id        String  @unique @db.Uuid
+  prompt_tokens     Int     @default(0)
+  completion_tokens Int     @default(0)
+  estimated_cost    Decimal @default(0.000000) @db.Decimal(10, 6)
+
+  message Message @relation(fields: [message_id], references: [id])
+}
+
+model MessageFeedback {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  message_id      String   @unique @db.Uuid
+  rating          Int
+  feedback_reason String?  @db.VarChar(255)
+  created_at      DateTime @default(now())
+
+  message Message @relation(fields: [message_id], references: [id])
+}
+
+model CounselorPerformance {
+  counselor_id       String   @id @db.Uuid
+  total_handled      Int      @default(0)
+  avg_response_sec   Int      @default(0)
+  satisfaction_score Decimal? @db.Decimal(3, 2)
+
+  counselor User @relation(fields: [counselor_id], references: [id])
+}
+
+model InstitutionProgram {
+  program_code      String   @id @db.VarChar(50)
+  program_name      String   @db.VarChar(255)
+  country           String   @db.VarChar(100)
+  tuition_fee       Int
+  deadline_fall     DateTime @db.Date
+  ielts_requirement Decimal  @db.Decimal(2, 1)
+
+  @@index([program_name])
+  @@index([country])
+}
+
+model StudentProfile {
+  user_id        String   @id @db.Uuid
+  target_country String?  @db.VarChar(100)
+  current_gpa    Decimal? @db.Decimal(3, 2)
+  budget_usd     Int?
+  updated_at     DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model SystemAuditLog {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  actor_id      String   @db.Uuid
+  action_type   String   @db.VarChar(100)
+  target_entity String?  @db.VarChar(255)
+  ip_address    String   @db.VarChar(45)
+  created_at    DateTime @default(now())
+
+  actor User @relation("LogActor", fields: [actor_id], references: [id])
+
+  @@index([actor_id])
+  @@index([action_type])
+}
+
+model BannedIp {
+  ip_address String   @id @db.VarChar(45)
+  reason     String   @db.VarChar(255)
+  expires_at DateTime
+}
+
+model RefreshToken {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique @db.VarChar(255)
+  expires_at DateTime
+  revoked_at DateTime?
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model Notification {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String   @db.Uuid
+  type       String   @db.VarChar(50)
+  content    String   @db.Text
+  is_read    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model AuditEvent {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  actor_id   String   @db.Uuid
+  event_type String   @db.VarChar(100)
+  metadata   Json?
+  ip_address String   @db.VarChar(45)
+  created_at DateTime @default(now())
+
+  actor User @relation("AuditActor", fields: [actor_id], references: [id])
+
+  @@index([actor_id])
+  @@index([event_type])
+}
+
+model UploadedDocument {
+  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  filename    String         @db.VarChar(255)
+  s3_url      String         @db.VarChar(512)
+  status      DocumentStatus
+  uploaded_by String         @db.Uuid
+  created_at  DateTime       @default(now())
+
+  admin User @relation(fields: [uploaded_by], references: [id])
+
+  @@index([uploaded_by])
+}
+
+model VectorKnowledgeBase {
+  id        String                     @id
+  embedding Unsupported("vector(768)")
+  metadata  Json
+}
