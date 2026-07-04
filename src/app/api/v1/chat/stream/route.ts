@@ -120,85 +120,98 @@ export async function POST(req: NextRequest) {
       temperature: 0.3,
     };
 
-    // Create a ReadableStream for SSE
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          if (!process.env.GEMINI_API_KEY) {
-            const mockText = "Hello! I am the AI Counselor. My UI and streaming logic is ready! Please configure GEMINI_API_KEY in .env.";
-            const words = mockText.split(" ");
-            for (let i = 0; i < words.length; i++) {
-              await new Promise(r => setTimeout(r, 50));
-              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text: words[i] + " " })}\n\n`));
-            }
-            controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
-            controller.close();
-            return;
+    // Use TransformStream to avoid "failed to pipe response" in Next.js
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
+
+    const sendSSE = (data: string) => writer.write(encoder.encode(`data: ${data}\n\n`));
+
+    // Run async work in the background; return readable immediately
+    (async () => {
+      try {
+        if (!process.env.GEMINI_API_KEY) {
+          const mockText = "Hello! I am the AI Counselor. My UI and streaming logic is ready! Please configure GEMINI_API_KEY in .env.";
+          const words = mockText.split(" ");
+          for (const word of words) {
+            await new Promise(r => setTimeout(r, 50));
+            await sendSSE(JSON.stringify({ text: word + " " }));
+          }
+          await sendSSE("[DONE]");
+          await writer.close();
+          return;
+        }
+
+        const responseStream = await ai.models.generateContentStream({
+          model: 'gemini-2.5-flash',
+          contents,
+          config
+        });
+
+        let toolCalls: any[] = [];
+
+        for await (const chunk of responseStream) {
+          if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+            toolCalls.push(...chunk.functionCalls);
+          }
+          if (chunk.text) {
+            await sendSSE(JSON.stringify({ text: chunk.text }));
+          }
+        }
+
+        if (toolCalls.length > 0) {
+          const functionResponses = [];
+          for (const call of toolCalls) {
+            const result = await executeToolCall(call);
+            functionResponses.push({ name: call.name, response: result });
           }
 
-          const responseStream = await ai.models.generateContentStream({
+          contents.push({
+            role: "model",
+            parts: toolCalls.map(c => ({ functionCall: c }))
+          });
+          contents.push({
+            role: "user",
+            parts: functionResponses.map(r => ({ functionResponse: r }))
+          });
+
+          const secondStream = await ai.models.generateContentStream({
             model: 'gemini-2.5-flash',
             contents,
             config
           });
 
-          let toolCalls: any[] = [];
-          
-          for await (const chunk of responseStream) {
-            if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-              toolCalls.push(...chunk.functionCalls);
-            }
+          for await (const chunk of secondStream) {
             if (chunk.text) {
-              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text: chunk.text })}\n\n`));
+              await sendSSE(JSON.stringify({ text: chunk.text }));
             }
           }
-
-          if (toolCalls.length > 0) {
-            const functionResponses = [];
-            for (const call of toolCalls) {
-              const result = await executeToolCall(call);
-              functionResponses.push({
-                name: call.name,
-                response: result
-              });
-            }
-
-            contents.push({
-              role: "model",
-              parts: toolCalls.map(c => ({ functionCall: c }))
-            });
-
-            contents.push({
-              role: "user",
-              parts: functionResponses.map(r => ({ functionResponse: r }))
-            });
-
-            const secondStream = await ai.models.generateContentStream({
-              model: 'gemini-2.5-flash',
-              contents,
-              config
-            });
-
-            for await (const chunk of secondStream) {
-              if (chunk.text) {
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text: chunk.text })}\n\n`));
-              }
-            }
-          }
-
-          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch (err) {
-          controller.error(err);
         }
-      },
-    });
 
-    return new Response(stream, {
+        await sendSSE("[DONE]");
+        await writer.close();
+      } catch (err: any) {
+        console.error("Stream error:", err);
+        try {
+          const isRateLimit = err?.status === 429 || JSON.stringify(err).includes("429") || JSON.stringify(err).includes("quota");
+          const errorMsg = isRateLimit 
+            ? "⚠️ **Gemini API Rate Limit Reached (429)**: The free tier quota was temporarily exceeded. Please wait a few seconds and send your message again!" 
+            : `Error: ${err.message || "Unable to process request."}`;
+          await sendSSE(JSON.stringify({ text: errorMsg }));
+          await sendSSE("[DONE]");
+          await writer.close();
+        } catch {
+          await writer.abort(err);
+        }
+      }
+    })();
+
+    return new Response(readable, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (error: any) {
