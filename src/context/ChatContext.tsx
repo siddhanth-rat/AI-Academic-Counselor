@@ -1,17 +1,20 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 
 export interface Message {
-  role: "user" | "model";
+  role: "user" | "model" | "counselor" | "system";
   content: string;
   isLoading?: boolean;
+  senderName?: string;
 }
 
 export interface ChatSession {
   id: string;
   title: string;
   createdAt: string;
+  status: string;
   messages: Message[];
 }
 
@@ -22,7 +25,11 @@ interface ChatContextType {
   createNewChat: () => void;
   selectSession: (id: string) => void;
   deleteSession: (id: string) => void;
+  renameSession: (id: string, newTitle: string) => void;
   updateActiveMessages: (updater: (prev: Message[]) => Message[]) => void;
+  updateSessionStatus: (sessionId: string, status: string) => void;
+  isSidebarCollapsed: boolean;
+  toggleSidebar: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -30,73 +37,160 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 const STORAGE_KEY = "admission_chatbot_sessions_v1";
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
+  const { status } = useSession();
+  const isLoggedIn = status === "authenticated";
+
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Load from LocalStorage on mount
+  const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);
+
+  // Load from LocalStorage on mount (for guest initial state)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setSessions(parsed);
-          setActiveSessionId(parsed[0].id);
-          setIsLoaded(true);
-          return;
-        }
-      }
-    } catch (e) {
-      console.error("Failed to load sessions from localStorage", e);
-    }
-
-    // Initial default fallback session
-    const initialSession: ChatSession = {
-      id: `session_${Date.now()}`,
-      title: "New Chat",
-      createdAt: new Date().toISOString(),
-      messages: [],
-    };
-    setSessions([initialSession]);
-    setActiveSessionId(initialSession.id);
     setIsLoaded(true);
   }, []);
 
-  // Save to LocalStorage whenever sessions change
+  // Sync sessions based on login state
   useEffect(() => {
-    if (isLoaded && sessions.length > 0) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-      } catch (e) {
-        console.error("Failed to save sessions to localStorage", e);
-      }
-    }
-  }, [sessions, isLoaded]);
+    if (!isLoaded) return;
 
-  const createNewChat = () => {
-    const newSession: ChatSession = {
-      id: `session_${Date.now()}`,
-      title: "New Chat",
-      createdAt: new Date().toISOString(),
-      messages: [],
-    };
-    setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newSession.id);
+    if (isLoggedIn) {
+      const loadDbSessions = async () => {
+        try {
+          const res = await fetch("/api/v1/chats");
+          if (res.ok) {
+            const data = await res.json();
+            const clientSessions: ChatSession[] = (data.sessions || []).map((s: any) => ({
+              id: s.id,
+              title: s.title,
+              createdAt: s.created_at,
+              status: s.status,
+              messages: (s.messages || []).map((m: any) => ({
+                role: m.sender_type === "USER" ? "user" : m.sender_type === "COUNSELOR" ? "counselor" : m.sender_type === "SYSTEM" ? "system" : "model",
+                content: m.content,
+                senderName: m.sender_type === "COUNSELOR" ? s.counselor?.name || "Counselor" : undefined,
+              }))
+            }));
+            setSessions(clientSessions);
+            if (clientSessions.length > 0) {
+              setActiveSessionId(clientSessions[0].id);
+            } else {
+              // Create default first chat in DB if none exist
+              const createRes = await fetch("/api/v1/chats", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: "New Chat" })
+              });
+              if (createRes.ok) {
+                const createData = await createRes.json();
+                const newSess: ChatSession = {
+                  id: createData.session.id,
+                  title: createData.session.title,
+                  createdAt: createData.session.created_at,
+                  status: createData.session.status,
+                  messages: []
+                };
+                setSessions([newSess]);
+                setActiveSessionId(newSess.id);
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch sessions from DB", e);
+        }
+      };
+      loadDbSessions();
+    } else {
+      // Ephemeral single guest session
+      const initialSession: ChatSession = {
+        id: "guest_session",
+        title: "New Chat",
+        createdAt: new Date().toISOString(),
+        status: "ACTIVE",
+        messages: [],
+      };
+      setSessions([initialSession]);
+      setActiveSessionId("guest_session");
+    }
+  }, [isLoggedIn, isLoaded]);
+
+  // Save to LocalStorage whenever sessions change (only for guests - disabled!)
+  useEffect(() => {
+    // Guest local storage saving is disabled to prevent filling local storage
+  }, [sessions, isLoaded, isLoggedIn]);
+
+  const createNewChat = async () => {
+    // Prevent creating multiple empty sessions
+    const emptySession = sessions.find((s) => s.messages.length === 0);
+    if (emptySession) {
+      setActiveSessionId(emptySession.id);
+      return;
+    }
+
+    if (isLoggedIn) {
+      try {
+        const res = await fetch("/api/v1/chats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "New Chat" })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const newSession: ChatSession = {
+            id: data.session.id,
+            title: data.session.title,
+            createdAt: data.session.created_at,
+            status: data.session.status,
+            messages: []
+          };
+          setSessions((prev) => [newSession, ...prev]);
+          setActiveSessionId(newSession.id);
+        }
+      } catch (e) {
+        console.error("Failed to create chat in DB", e);
+      }
+    } else {
+      // Guest mode: Reset the single guest session messages to empty!
+      setSessions([
+        {
+          id: "guest_session",
+          title: "New Chat",
+          createdAt: new Date().toISOString(),
+          status: "ACTIVE",
+          messages: [],
+        }
+      ]);
+      setActiveSessionId("guest_session");
+    }
   };
 
   const selectSession = (id: string) => {
     setActiveSessionId(id);
   };
 
-  const deleteSession = (id: string) => {
+  const deleteSession = async (id: string) => {
+    if (isLoggedIn) {
+      try {
+        await fetch(`/api/v1/chats/${id}`, { method: "DELETE" });
+      } catch (e) {
+        console.error("Failed to delete chat in DB", e);
+      }
+    }
+
     setSessions((prev) => {
       const filtered = prev.filter((s) => s.id !== id);
       if (filtered.length === 0) {
+        if (isLoggedIn) {
+          createNewChat();
+          return [];
+        }
         const fallback: ChatSession = {
           id: `session_${Date.now()}`,
           title: "New Chat",
           createdAt: new Date().toISOString(),
+          status: "ACTIVE",
           messages: [],
         };
         setActiveSessionId(fallback.id);
@@ -110,22 +204,77 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateActiveMessages = (updater: (prev: Message[]) => Message[]) => {
+    // Look at current active session before updating
+    const currentActiveSession = sessions.find(s => s.id === activeSessionId);
+    let shouldGenerateTitle = false;
+    let firstUserMsgContent = "";
+
+    if (currentActiveSession && currentActiveSession.title === "New Chat") {
+      const currentMessages = currentActiveSession.messages;
+      const newMessages = updater(currentMessages);
+      const firstUserMsg = newMessages.find((m) => m.role === "user");
+      
+      // If we just got our first user message, trigger title generation
+      if (firstUserMsg && !currentMessages.find(m => m.role === "user")) {
+        shouldGenerateTitle = true;
+        firstUserMsgContent = firstUserMsg.content;
+      }
+    }
+
     setSessions((prevSessions) =>
       prevSessions.map((sess) => {
         if (sess.id === activeSessionId) {
           const newMessages = updater(sess.messages);
           let title = sess.title;
-          if (title === "New Chat" && newMessages.length > 0) {
-            const firstUserMsg = newMessages.find((m) => m.role === "user");
-            if (firstUserMsg) {
-              title = firstUserMsg.content.slice(0, 25) + (firstUserMsg.content.length > 25 ? "..." : "");
-            }
+          if (title === "New Chat" && shouldGenerateTitle) {
+            title = isLoggedIn ? "Generating title..." : firstUserMsgContent.slice(0, 25) + (firstUserMsgContent.length > 25 ? "..." : "");
           }
           return { ...sess, messages: newMessages, title };
         }
         return sess;
       })
     );
+
+    if (shouldGenerateTitle && isLoggedIn) {
+      fetch(`/api/v1/chats/${activeSessionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generateTitleFrom: firstUserMsgContent })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.session.title) {
+          setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, title: data.session.title } : s));
+        }
+      })
+      .catch(e => console.error("Failed to generate title via API", e));
+    }
+  };
+
+  const updateSessionStatus = (sessionId: string, status: string) => {
+    setSessions((prevSessions) =>
+      prevSessions.map((s) => (s.id === sessionId ? { ...s, status } : s))
+    );
+  };
+
+  const renameSession = async (id: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    
+    // Optimistic UI update
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title: trimmed } : s)));
+    
+    if (isLoggedIn) {
+      try {
+        await fetch(`/api/v1/chats/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmed })
+        });
+      } catch (e) {
+        console.error("Failed to rename session", e);
+      }
+    }
   };
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
@@ -139,7 +288,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         createNewChat,
         selectSession,
         deleteSession,
+        renameSession,
         updateActiveMessages,
+        updateSessionStatus,
+        isSidebarCollapsed,
+        toggleSidebar,
       }}
     >
       {children}

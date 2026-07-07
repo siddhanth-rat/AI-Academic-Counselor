@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -23,7 +24,7 @@ export default function LoginPage() {
 
     try {
       if (isRegistering) {
-        // Call backend API to register user in Supabase
+        // 1. Call backend API to register user in database
         const res = await fetch("/api/v1/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -33,7 +34,18 @@ export default function LoginPage() {
         if (!res.ok) throw new Error(data.error || "Registration failed");
       }
 
-      // Redirect based on role
+      // 2. Authenticate user using NextAuth
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        throw new Error("Invalid email or password.");
+      }
+
+      // 3. Redirect based on role
       if (role === "COUNSELOR") {
         router.push("/dashboard");
       } else {
@@ -89,7 +101,7 @@ export default function LoginPage() {
                 : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
             }`}
           >
-            Counselor Portal
+            Staff Portal
           </button>
         </div>
 
@@ -119,7 +131,7 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={role === "STUDENT" ? "student@university.edu" : "counselor@institution.com"}
+              placeholder={role === "STUDENT" ? "student@university.edu" : "staff@institution.com"}
               className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#2C2C2C] text-gray-900 dark:text-white focus:outline-none focus:border-[#066AC9] text-sm"
             />
           </div>
@@ -165,7 +177,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-3 bg-[#066AC9] hover:bg-[#055AAB] text-white font-semibold rounded-xl transition-all shadow-md mt-2 disabled:opacity-50"
           >
-            {loading ? "Processing..." : isRegistering ? "Create Student Account" : `Sign In as ${role === "STUDENT" ? "Student" : "Counselor"}`}
+            {loading ? "Processing..." : isRegistering ? "Create Student Account" : `Sign In as ${role === "STUDENT" ? "Student" : "Staff"}`}
           </button>
         </form>
 
@@ -198,26 +210,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Guest Mode Link */}
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-[#066AC9] dark:hover:text-[#066AC9] transition-colors group"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            Go back to Guest Mode
-          </button>
-        </div>
+
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import NextAuth from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
+import { prisma } from "@/lib/prisma"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -10,8 +11,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        // Mock authorization for Phase 2 UI testing.
-        // In Phase 3, this will connect to the Prisma database and bcrypt compare.
+        if (!credentials?.email || !credentials?.password) return null;
+
+        // Try database lookup first (for newly registered users)
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email as string }
+        });
+
+        if (user && user.password_hash === credentials.password) {
+          const emailStr = user.email || "";
+          return { id: user.id, name: user.name || emailStr.split("@")[0], email: user.email, role: user.role };
+        }
+
+        // Mock authorization for local testing
         if (credentials?.email === "admin@consultancy.com" && credentials?.password === "admin") {
           return { id: "1", name: "Admin User", email: "admin@consultancy.com", role: "ADMIN" }
         }
@@ -26,15 +38,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     })
   ],
   callbacks: {
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session }) {
       if (user) { // User is available during sign-in
         token.role = (user as any).role
+        token.name = user.name
       }
+      if (trigger === "update" && session?.name) token.name = session.name
       return token
     },
     session({ session, token }) {
       if (session.user) {
         (session.user as any).role = token.role
+        session.user.name = token.name || session.user.name
       }
       return session
     },

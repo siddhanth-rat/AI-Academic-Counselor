@@ -1,5 +1,6 @@
 generator client {
   provider        = "prisma-client-js"
+  engineType      = "library"
   previewFeatures = ["postgresqlExtensions"]
 }
 
@@ -35,10 +36,42 @@ enum DocumentStatus {
   FAILED
 }
 
+enum Phase {
+  PHASE_1_SELF_DISCOVERY
+  PHASE_2_ACADEMIC_PLANNING
+  PHASE_3_PROFILE_BUILDING
+  PHASE_4_STANDARDIZED_TESTS
+  PHASE_5_UNIVERSITY_DISCOVERY
+  PHASE_6_SHORTLISTING
+  PHASE_7_REQUIREMENTS_CHECK
+  PHASE_8_DOCUMENT_PREPARATION
+  PHASE_9_APPLICATION_MANAGEMENT
+  PHASE_10_DEADLINE_MANAGEMENT
+  PHASE_11_SCHOLARSHIP_SEARCH
+  PHASE_12_FINANCIAL_PLANNING
+  PHASE_13_INTERVIEW_PREPARATION
+  PHASE_14_OFFER_MANAGEMENT
+  PHASE_15_VISA
+}
+
+enum ApplicationStatus {
+  INTERESTED
+  SHORTLISTED
+  APPLYING
+  APPLIED
+  REJECTED
+  ACCEPTED
+  DEFERRED
+}
+
 model User {
   id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   email         String?   @unique @db.VarChar(255)
   password_hash String?   @db.VarChar(255)
+  name          String?   @db.VarChar(255)
+  city          String?   @db.VarChar(100)
+  state         String?   @db.VarChar(100)
+  date_of_birth DateTime? @db.Date
   role          Role      @default(STUDENT)
   created_at    DateTime  @default(now())
   last_login    DateTime?
@@ -117,26 +150,120 @@ model CounselorPerformance {
   counselor User @relation(fields: [counselor_id], references: [id])
 }
 
-model InstitutionProgram {
-  program_code      String   @id @db.VarChar(50)
-  program_name      String   @db.VarChar(255)
-  country           String   @db.VarChar(100)
-  tuition_fee       Int
-  deadline_fall     DateTime @db.Date
-  ielts_requirement Decimal  @db.Decimal(2, 1)
+model Institution {
+  id              String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  university_name String               @db.VarChar(255)
+  country         String               @db.VarChar(100)
+  city            String?              @db.VarChar(100)
+  qs_rank         Int?
+  website         String?              @db.VarChar(512)
 
-  @@index([program_name])
+  // Relations
+  programs        InstitutionProgram[]
+
+  @@index([university_name])
   @@index([country])
 }
 
-model StudentProfile {
-  user_id        String   @id @db.Uuid
-  target_country String?  @db.VarChar(100)
-  current_gpa    Decimal? @db.Decimal(3, 2)
-  budget_usd     Int?
-  updated_at     DateTime @default(now()) @updatedAt
+model InstitutionProgram {
+  id                    String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  institution_id        String               @db.Uuid
+  program_name          String               @db.VarChar(255)
+  degree                String               @db.VarChar(255)
+  duration_months       Int
+  tuition_fee           Int
+  living_cost           Int?
+  application_fee       Int?
+  intake                String               @db.VarChar(100)
+  deadline              DateTime?            @db.Date
+  min_gpa               Decimal?             @db.Decimal(3, 2)
+  ielts_requirement     Decimal?             @db.Decimal(2, 1)
+  toefl_requirement     Int?
+  pte_requirement       Int?
+  gre_required          Boolean              @default(false)
+  gre_min               Int?
+  gmat_required         Boolean              @default(false)
+  work_exp_required     Boolean              @default(false)
+  work_exp_years        Decimal?             @db.Decimal(3, 1)
+  scholarship_available Boolean              @default(false)
+  scholarship_amount    Int?
 
-  user User @relation(fields: [user_id], references: [id])
+  // Relations
+  institution           Institution          @relation(fields: [institution_id], references: [id], onDelete: Cascade)
+  shortlisted_by        ShortlistedProgram[]
+
+  @@index([institution_id])
+  @@index([program_name])
+}
+
+model StudentProfile {
+  user_id               String   @id @db.Uuid
+  current_phase         Phase    @default(PHASE_1_SELF_DISCOVERY)
+
+  // Academic
+  current_gpa           Decimal? @db.Decimal(3, 2)
+  current_degree        String?  @db.VarChar(255)
+  graduation_year       Int?
+  academic_board        String?  @db.VarChar(100)
+
+  // Test Scores
+  ielts_score           Decimal? @db.Decimal(2, 1)
+  toefl_score           Int?
+  pte_score             Int?
+  gre_score             Int?
+  gmat_score            Int?
+  target_test_date      DateTime? @db.Date
+
+  // Preferences
+  preferred_course      String?  @db.VarChar(255)
+  preferred_degree      String?  @db.VarChar(255)
+  target_country        String?  @db.VarChar(100)
+  preferred_intake      String?  @db.VarChar(100)
+
+  // Financial
+  budget_usd            Int?
+  scholarship_required  Boolean  @default(false)
+
+  // Experience
+  work_experience_years Decimal? @db.Decimal(3, 1)
+  research_experience   Boolean  @default(false)
+  extracurriculars      String?  @db.Text
+  volunteering          String?  @db.Text
+  sports                String?  @db.Text
+  projects_internships  String?  @db.Text
+
+  // Documents
+  sop_uploaded          Boolean  @default(false)
+  resume_uploaded       Boolean  @default(false)
+  passport_ready        Boolean  @default(false)
+  visa_cas_i20_ready    Boolean  @default(false)
+  visa_financials_ready Boolean  @default(false)
+
+  updated_at            DateTime @default(now()) @updatedAt
+
+  // Relations
+  user                  User                 @relation(fields: [user_id], references: [id])
+  shortlisted_programs  ShortlistedProgram[]
+}
+
+model ShortlistedProgram {
+  id             String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  student_id     String            @db.Uuid
+  program_id     String            @db.Uuid
+  status         ApplicationStatus @default(INTERESTED)
+  
+  // Requirement Tracker
+  sop_completed  Boolean           @default(false)
+  lor_completed  Boolean           @default(false)
+  cv_completed   Boolean           @default(false)
+  fee_paid       Boolean           @default(false)
+  visa_filed     Boolean           @default(false)
+
+  // Relations
+  student        StudentProfile     @relation(fields: [student_id], references: [user_id], onDelete: Cascade)
+  program        InstitutionProgram @relation(fields: [program_id], references: [id], onDelete: Cascade)
+
+  @@unique([student_id, program_id])
 }
 
 model SystemAuditLog {
@@ -215,4 +342,13 @@ model VectorKnowledgeBase {
   id        String                     @id
   embedding Unsupported("vector(768)")
   metadata  Json
+}
+
+model DailyMetric {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  date              DateTime @unique @db.Date
+  prompt_tokens     Int      @default(0)
+  completion_tokens Int      @default(0)
+  estimated_cost    Decimal  @default(0.000000) @db.Decimal(10, 6)
+  message_count     Int      @default(0)
 }

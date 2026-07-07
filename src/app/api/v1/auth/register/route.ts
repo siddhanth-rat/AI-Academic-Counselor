@@ -5,8 +5,8 @@ export async function POST(req: NextRequest) {
   try {
     const { email, password, name, countryOfOrigin, role } = await req.json();
 
-    if (!email || !password) {
-      return NextResponse.json({ error: "Email and password required" }, { status: 400 });
+    if (!email || !password || !name?.trim()) {
+      return NextResponse.json({ error: "Full name, email, and password are required" }, { status: 400 });
     }
 
     // Check if user already exists
@@ -15,21 +15,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User with this email already exists." }, { status: 400 });
     }
 
-    // Create user in Supabase via Prisma
+    // Create user in Supabase via Prisma matching exact schema relations
     const user = await prisma.user.create({
       data: {
         email,
-        name: name || "Student",
+        password_hash: password, // In production, hash with bcrypt
+        name: name.trim(),
         role: role || "STUDENT",
-        profile: role === "STUDENT" ? {
+        student_profile: role === "STUDENT" ? {
           create: {
-            countryOfOrigin: countryOfOrigin || "India",
-            currentGpa: 3.5,
-            budgetUsd: 40000,
+            target_country: countryOfOrigin || "India",
+            current_gpa: 3.5,
+            budget_usd: 40000,
           }
         } : undefined
       },
-      include: { profile: true }
+      include: { student_profile: true }
     });
 
     return NextResponse.json({ success: true, user });

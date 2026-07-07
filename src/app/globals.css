@@ -6,14 +6,14 @@
 @theme inline {
   --color-primary-blue: #066AC9;
   --color-primary-hover: #055AAB;
-  
+
   --color-sidebar-bg: #EDEDED;
   --color-main-bg: #FFFFFF;
-  
+
   --color-text-primary: #1F2022;
   --color-text-secondary: #989898;
   --color-text-muted: #B3B3B3;
-  
+
   --color-success: #538B19;
   --color-error: #D32F2F;
 
@@ -46,4 +46,78 @@ body {
 
 .bg-secondary-gradient {
   background: linear-gradient(92.91deg, #1BA9BC, #2966C1);
+}
+
+/* ── Custom Scrollbar ─────────────────────────────────────── */
+/* Thin, on-brand scrollbar — light mode */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
+}
+
+.custom-scrollbar:hover {
+  scrollbar-color: rgba(6, 106, 201, 0.30) transparent;
+}
+
+/* Always Visible Scrollbar */
+.always-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(6, 106, 201, 0.25) transparent;
+}
+.always-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.always-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.always-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(6, 106, 201, 0.25);
+  border-radius: 99px;
+}
+.dark .always-scrollbar {
+  scrollbar-color: rgba(6, 106, 201, 0.35) transparent;
+}
+.dark .always-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(6, 106, 201, 0.35);
+}
+
+/* WebKit (Chrome / Safari / Edge) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 99px;
+  transition: background 0.3s ease;
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(6, 106, 201, 0.30);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 106, 201, 0.55);
+}
+
+/* Dark mode overrides */
+.dark .custom-scrollbar {
+  scrollbar-color: transparent transparent;
+}
+
+.dark .custom-scrollbar:hover {
+  scrollbar-color: rgba(6, 106, 201, 0.40) transparent;
+}
+
+.dark .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(6, 106, 201, 0.40);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 106, 201, 0.65);
 }

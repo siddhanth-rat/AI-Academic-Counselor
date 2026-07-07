@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { SessionProvider } from "next-auth/react";
+import { ChatProvider } from "@/context/ChatContext";
 
 
 const geistSans = Geist({
@@ -24,11 +26,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        suppressHydrationWarning
       >
-        {children}
+        <SessionProvider>
+          <ChatProvider>
+            {children}
+          </ChatProvider>
+        </SessionProvider>
       </body>
     </html>
   );
