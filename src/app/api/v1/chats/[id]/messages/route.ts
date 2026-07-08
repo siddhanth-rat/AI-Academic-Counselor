@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { verifyCsrf } from "@/lib/csrf";
-import { sanitizeInput } from "@/lib/sanitize";
+import { sanitizeInput, containsAbusiveLanguage } from "@/lib/sanitize";
 
 export async function POST(
   req: NextRequest,
@@ -22,6 +22,10 @@ export async function POST(
     const { content } = await req.json();
     if (!content) {
       return NextResponse.json({ error: "Message content required" }, { status: 400 });
+    }
+
+    if (containsAbusiveLanguage(content)) {
+      return NextResponse.json({ error: "Message blocked: Please maintain a professional and respectful tone." }, { status: 400 });
     }
 
     const message = await prisma.message.create({

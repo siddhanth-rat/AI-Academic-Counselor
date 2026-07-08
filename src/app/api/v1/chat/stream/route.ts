@@ -9,7 +9,7 @@ import { getRecommendations } from "@/lib/recommendation";
 import { runWithModelsAndRetry } from "@/lib/gemini";
 import { isIpBanned, checkIpRateLimit, checkUserCostBudget } from "@/lib/rate-limit";
 import { verifyCsrf } from "@/lib/csrf";
-import { sanitizeInput } from "@/lib/sanitize";
+import { sanitizeInput, containsAbusiveLanguage } from "@/lib/sanitize";
 import { redactPii } from "@/lib/pii-scanner";
 
 // Force cache refresh
@@ -275,6 +275,14 @@ export async function POST(req: NextRequest) {
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Invalid messages format" }), { status: 400 });
+    }
+
+    const latestUserPrompt = messages[messages.length - 1]?.content || "";
+    if (containsAbusiveLanguage(latestUserPrompt)) {
+      return new Response(
+        JSON.stringify({ error: "Message blocked: Please maintain a professional and respectful tone." }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     // 2. Identify the user making the request
