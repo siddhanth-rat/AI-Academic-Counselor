@@ -7,6 +7,9 @@ import { auth } from "@/auth";
 import { getSystemInstructions } from "@/lib/AI_instructions";
 import { getRecommendations } from "@/lib/recommendation";
 import { runWithModelsAndRetry } from "@/lib/gemini";
+import { isIpBanned, checkIpRateLimit, checkUserCostBudget } from "@/lib/rate-limit";
+import { verifyCsrf } from "@/lib/csrf";
+import { sanitizeInput } from "@/lib/sanitize";
 
 // Force cache refresh
 
@@ -235,6 +238,37 @@ async function executeToolCall(call: any, sessionId: string) {
 // the browser makes a POST request to this endpoint with their message history.
 export async function POST(req: NextRequest) {
   try {
+    // CSRF Protection Check
+    if (!verifyCsrf(req)) {
+      return new Response(JSON.stringify({ error: "Access Denied: CSRF validation failed." }), { status: 403 });
+    }
+
+    // Extract client IP and verify rate limits / bans
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || 
+               req.headers.get("x-real-ip") || 
+               "127.0.0.1";
+
+    if (await isIpBanned(ip)) {
+      return new Response(
+        JSON.stringify({ error: "Access Denied: Your IP has been flagged for abuse. Please contact support." }),
+        { status: 403 }
+      );
+    }
+
+    const rateLimit = await checkIpRateLimit(ip);
+    if (!rateLimit.allowed) {
+      if (rateLimit.isAbusive) {
+        return new Response(
+          JSON.stringify({ error: "Access Denied: Too many requests. Your IP has been flagged and banned." }),
+          { status: 403 }
+        );
+      }
+      return new Response(
+        JSON.stringify({ error: "Too many requests. Please wait a minute before trying again." }),
+        { status: 429 }
+      );
+    }
+
     // 1. Extract the message history and the ID of the current chat session
     const { messages, sessionId } = await req.json();
 
@@ -249,6 +283,14 @@ export async function POST(req: NextRequest) {
       : null;
 
     if (profile) {
+      // User Daily Token Cost Limit Check
+      const budgetCheck = await checkUserCostBudget(profile.id);
+      if (!budgetCheck.allowed) {
+        return new Response(
+          JSON.stringify({ error: `Daily API budget limit reached (Spent $${budgetCheck.totalCost.toFixed(2)}/$0.50). Please try again tomorrow.` }),
+          { status: 429 }
+        );
+      }
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const messageCount = await prisma.message.count({
         where: {
@@ -276,7 +318,7 @@ export async function POST(req: NextRequest) {
     // 4. Transform the message history into the strict format that Gemini expects
     const contents: any[] = messages.map((m: any) => ({
       role: m.role === "user" ? "user" : "model", // Identify who said what
-      parts: [{ text: m.content }],              // The actual text they typed
+      parts: [{ text: sanitizeInput(m.content) }], // Sanitize input content
     }));
 
     const systemInstruction = {
@@ -556,7 +598,7 @@ export async function POST(req: NextRequest) {
               await prisma.$transaction([
                 prisma.message.createMany({
                   data: [
-                    { id: userMsgId, session_id: sessionId, sender_type: "USER", content: userPrompt },
+                    { id: userMsgId, session_id: sessionId, sender_type: "USER", content: sanitizeInput(userPrompt) },
                     { id: aiMsgId, session_id: sessionId, sender_type: "AI", content: finalAiContent }
                   ]
                 }),
@@ -585,8 +627,8 @@ export async function POST(req: NextRequest) {
       } catch (err: any) {
         console.error("Stream error:", err);
         try {
-          // Stream a high-quality simulated response instead of crashing with rate limit error
-          const mockText = getMockCounselorResponse(lastUserMessage);
+          // Stream a safe, generic error fallback message instead of crashing or returning simulated advice
+          const mockText = getFallbackErrorResponse();
           const words = mockText.split(" ");
           for (const word of words) {
             await new Promise(r => setTimeout(r, 40));
@@ -614,43 +656,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function getMockCounselorResponse(query: string): string {
-  const q = query.toLowerCase();
-  
-  if (q.includes("germany") && (q.includes("free") || q.includes("tuition") || q.includes("cost"))) {
-    return `Yes! Public universities in Germany do not charge tuition fees for undergraduate and consecutive Master's programs, which applies to both domestic and international students.
-
-Here are the key details you should keep in mind:
-1. **Semester Fee:** While tuition is free, you pay a small semester fee of around **€150 to €450** to cover administrative costs and a public transit pass.
-2. **Blocked Account (Sperrkonto):** To secure a German student visa, you must show you have enough money to live. As of 2024/2025, you must deposit **€11,904 per year** (around €992 per month) into a blocked account.
-3. **Exceptions:** Public universities in the state of Baden-Württemberg charge non-EU international students tuition fees of €1,500 per semester. Private universities also charge regular tuition fees.
-4. **Language:** Most undergraduate courses are in German (requiring TestDaF/DSH), while many Master's courses are in English.`;
-  }
-  
-  if (q.includes("visa") || q.includes("permit")) {
-    return `The study visa application process typically requires the following documents:
-1. **Acceptance Letter:** CAS letter for the UK, or an I-20 form for the US.
-2. **Financial Proof:** Bank statements or a blocked account showing you can cover tuition and living expenses (e.g., ~$20,000/year for the US, or ~£1,334/month for London in the UK).
-3. **Language Score:** IELTS, TOEFL, or PTE academic scores.
-4. **Passport & Transcripts:** A valid passport and certified copies of your previous marksheets.`;
-  }
-
-  if (q.includes("scholarship") || q.includes("funding")) {
-    return `Securing funding is crucial. The main scholarship types are:
-1. **Merit-Based:** Automatically awarded by universities based on your GPA and test scores (10% to 100% tuition coverage).
-2. **Government Scholarships:** Programs like the DAAD (Germany), Chevening (UK), or Fulbright (US) cover full tuition and living expenses but are highly competitive.
-3. **Need-Based Grants:** Offered by institutions to students demonstrating financial need.
-
-Apply 8-12 months before intake to maximize your chances.`;
-  }
-
-  return `I apologize, but all of my Gemini API keys have currently hit their free-tier daily rate limits. 
-
-However, as your Study Abroad Counselor, here is a general summary:
-- **Germany:** Most public universities are tuition-free but require a blocked account of €11,904/year.
-- **Visa Requirements:** You will need an admission letter, financial proof, and IELTS/TOEFL scores.
-- **Scholarships:** Universities offer merit-based scholarships up to 100% tuition coverage.
-
-Please feel free to ask a more specific question, or wait a short period for the API quota to reset!`;
+function getFallbackErrorResponse(): string {
+  return "I apologize, but I am currently experiencing high traffic or connection issues. I'm unable to process your request at the moment. Please try sending your message again in a few moments, or check back shortly. If you need urgent assistance, you can request to connect with a human counselor.";
 }
 

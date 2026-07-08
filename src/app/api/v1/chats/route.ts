@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { resolveUnavailableEscalations } from "@/lib/escalation";
+import { verifyCsrf } from "@/lib/csrf";
+import { sanitizeInput } from "@/lib/sanitize";
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,6 +34,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!verifyCsrf(req)) {
+      return NextResponse.json({ error: "Access Denied: CSRF validation failed." }, { status: 403 });
+    }
+
     const session = await auth();
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -43,9 +49,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
     const { title } = await req.json().catch(() => ({}));
+    const cleanTitle = title ? sanitizeInput(title) : "New Chat";
     const newSession = await prisma.session.create({
       data: {
-        title: title || "New Chat",
+        title: cleanTitle,
         status: "ACTIVE",
         user_id: user.id,
       },

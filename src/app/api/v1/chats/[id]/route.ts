@@ -3,9 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { logSystemAction } from "@/lib/audit";
 import { runWithRetry } from "@/lib/gemini";
+import { verifyCsrf } from "@/lib/csrf";
+import { sanitizeInput } from "@/lib/sanitize";
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   try {
+    if (!verifyCsrf(req)) {
+      return NextResponse.json({ error: "Access Denied: CSRF validation failed." }, { status: 403 });
+    }
+
     const session = await auth();
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -46,6 +52,10 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
 
 export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   try {
+    if (!verifyCsrf(req)) {
+      return NextResponse.json({ error: "Access Denied: CSRF validation failed." }, { status: 403 });
+    }
+
     const session = await auth();
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -56,27 +66,28 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     let title = body.title;
 
     if (generateTitleFrom) {
+      const cleanGenerateTitleFrom = sanitizeInput(generateTitleFrom);
       try {
         const response = await runWithRetry((ai) =>
           ai.models.generateContent({
             model: "gemini-3.1-flash-lite",
-            contents: `Summarize this message into a short, descriptive chat title (2-5 words). Do not use quotes, punctuation, or any extra text. Message: "${generateTitleFrom}"`,
+            contents: `Summarize this message into a short, descriptive chat title (2-5 words). Do not use quotes, punctuation, or any extra text. Message: "${cleanGenerateTitleFrom}"`,
           })
         );
         if (response.text) {
           title = response.text.trim().replace(/^["'](.*)["']$/, '$1');
         } else {
-          title = generateTitleFrom.slice(0, 25) + (generateTitleFrom.length > 25 ? "..." : "");
+          title = cleanGenerateTitleFrom.slice(0, 25) + (cleanGenerateTitleFrom.length > 25 ? "..." : "");
         }
       } catch (e) {
         console.error("Failed to generate title", e);
-        title = generateTitleFrom.slice(0, 25) + (generateTitleFrom.length > 25 ? "..." : "");
+        title = cleanGenerateTitleFrom.slice(0, 25) + (cleanGenerateTitleFrom.length > 25 ? "..." : "");
       }
     }
 
     const data: any = {};
     if (typeof title === "string" && title.trim()) {
-      data.title = title.trim();
+      data.title = sanitizeInput(title);
     }
     if (status === "PENDING_ESCALATION") {
       data.status = "PENDING_ESCALATION";

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { runWithRetry } from "@/lib/gemini";
+import { Prisma } from "@prisma/client";
 
 // Track API rate-limiting status globally to speed up multi-chunk uploads
 let globalEmbeddingRateLimitActive = false;
@@ -72,14 +73,13 @@ export async function searchVectorStore(query: string, limit: number = 3) {
       const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
       
       if (keywords.length > 0) {
-        const conditions = keywords.map((_, idx) => `(metadata->>'text') ILIKE $${idx + 1}`);
-        const sqlQuery = `
+        const conditions = keywords.map((k) => Prisma.sql`(metadata->>'text') ILIKE ${`%${k}%`}`);
+        const results: any[] = await prisma.$queryRaw`
           SELECT id, metadata, 1.0 AS similarity
           FROM "VectorKnowledgeBase"
-          WHERE ${conditions.join(" AND ")}
+          WHERE ${Prisma.join(conditions, " AND ")}
           LIMIT ${limit};
         `;
-        const results: any[] = await prisma.$queryRawUnsafe(sqlQuery, ...keywords.map(k => `%${k}%`));
         if (results && results.length > 0) {
           return results.map(r => {
             const meta = typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata;

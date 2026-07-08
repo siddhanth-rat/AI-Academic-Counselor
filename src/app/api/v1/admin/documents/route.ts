@@ -3,6 +3,8 @@ import { storeVectorDocument } from "@/lib/rag";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { logSystemAction } from "@/lib/audit";
+import { verifyCsrf } from "@/lib/csrf";
+import { sanitizeInput } from "@/lib/sanitize";
 
 // Helper to chunk text into paragraphs / sections for vector storage
 function chunkText(text: string, maxChunkSize: number = 1000): string[] {
@@ -49,6 +51,10 @@ async function extractText(buffer: Buffer, strategy: string): Promise<string> {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!verifyCsrf(req)) {
+      return new Response(JSON.stringify({ error: "Access Denied: CSRF validation failed." }), { status: 403 });
+    }
+
     const session = await auth();
     if (!session || !session.user || !session.user.email) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
@@ -70,9 +76,12 @@ export async function POST(req: NextRequest) {
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
-      title = (formData.get("title") as string) || (file?.name || "Uploaded Document");
-      category = (formData.get("category") as string) || "General";
+      const rawTitle = (formData.get("title") as string) || (file?.name || "Uploaded Document");
+      const rawCategory = (formData.get("category") as string) || "General";
       const manualText = (formData.get("text") as string) || "";
+
+      title = sanitizeInput(rawTitle);
+      category = sanitizeInput(rawCategory);
 
       if (file) {
         const buffer = Buffer.from(await file.arrayBuffer());
@@ -86,13 +95,13 @@ export async function POST(req: NextRequest) {
         // Clean up unprintable characters if binary/pdf plain text extraction
         fullText = extractedText.replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, " ");
       } else {
-        fullText = manualText;
+        fullText = sanitizeInput(manualText);
       }
     } else {
       const body = await req.json();
-      title = body.title || "Untitled Document";
-      category = body.category || "General";
-      fullText = body.text || "";
+      title = sanitizeInput(body.title || "Untitled Document");
+      category = sanitizeInput(body.category || "General");
+      fullText = sanitizeInput(body.text || "");
     }
 
     if (!fullText || !fullText.trim()) {

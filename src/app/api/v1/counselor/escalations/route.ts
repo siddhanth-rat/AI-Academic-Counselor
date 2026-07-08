@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { resolveUnavailableEscalations } from "@/lib/escalation";
 import { logSystemAction } from "@/lib/audit";
+import { verifyCsrf } from "@/lib/csrf";
 
 export async function GET(req: NextRequest) {
   try {
@@ -69,6 +70,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!verifyCsrf(req)) {
+      return NextResponse.json({ error: "Access Denied: CSRF validation failed." }, { status: 403 });
+    }
+
     const session = await auth();
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

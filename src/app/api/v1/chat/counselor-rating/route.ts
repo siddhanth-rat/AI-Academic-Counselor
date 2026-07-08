@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { verifyCsrf } from "@/lib/csrf";
 
 export async function POST(req: NextRequest) {
   try {
+    if (!verifyCsrf(req)) {
+      return NextResponse.json({ error: "Access Denied: CSRF validation failed." }, { status: 403 });
+    }
+
     const session = await auth();
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
