@@ -87,7 +87,8 @@ export default function ChatPage() {
               content: m.content,
               senderName: m.sender_type === "COUNSELOR" ? cur.counselor?.name || "Counselor" : undefined,
             }));
-            if (mappedMsgs.length !== messages.length) {
+            // Skip overwriting during active user typing/streaming to prevent race conditions
+            if (!isTyping && mappedMsgs.length !== messages.length) {
               updateActiveMessages(() => mappedMsgs);
             }
             if (cur.status !== activeSession.status) {
@@ -106,7 +107,7 @@ export default function ChatPage() {
       abortController.abort();
       clearInterval(interval);
     };
-  }, [activeSession?.id, activeSession?.status, messages.length, updateActiveMessages, updateSessionStatus, isLoggedIn]);
+  }, [activeSession?.id, activeSession?.status, messages.length, updateActiveMessages, updateSessionStatus, isLoggedIn, isTyping]);
 
   // Autofocus the chat input box when the active session changes or streaming finishes
   useEffect(() => {
