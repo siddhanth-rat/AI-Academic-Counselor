@@ -152,12 +152,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    let isHistoryEmpty = false;
     setSessions((prev) => {
       const filtered = prev.filter((s) => s.id !== id);
       if (filtered.length === 0) {
-        if (isLoggedIn) {
-          createNewChat();
-        }
+        isHistoryEmpty = true;
         return [];
       }
       if (activeSessionId === id) {
@@ -165,6 +164,30 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
       return filtered;
     });
+
+    if (isHistoryEmpty && isLoggedIn) {
+      try {
+        const res = await fetch("/api/v1/chats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "New Chat" })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const newSession: ChatSession = {
+            id: data.session.id,
+            title: data.session.title,
+            createdAt: data.session.created_at,
+            status: data.session.status,
+            messages: []
+          };
+          setSessions([newSession]);
+          setActiveSessionId(newSession.id);
+        }
+      } catch (e) {
+        console.error("Failed to create chat in DB", e);
+      }
+    }
   };
 
   const updateActiveMessages = (updater: (prev: Message[]) => Message[]) => {
