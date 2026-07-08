@@ -220,27 +220,46 @@ export default function ChatPage() {
   const handleSend = async (text: string = input) => {
     if (!text.trim() || isTyping) return;
 
-    // Check for counselor escalation keywords
+    // Check for counselor escalation/cancellation keywords
     const normalizedText = text.toLowerCase();
-    const isEscalationKeyword =
-      normalizedText.includes("counselor") ||
-      normalizedText.includes("human assistance") ||
-      normalizedText.includes("escalat") ||
-      (normalizedText.includes("connect") && normalizedText.includes("human"));
+    const isCancelRequest =
+      normalizedText.includes("cancel") &&
+      (normalizedText.includes("escalat") || normalizedText.includes("counselor") || normalizedText.includes("human") || normalizedText.includes("takeover"));
 
     const isStudent = !session || (session.user as any)?.role === "STUDENT" || !(session.user as any)?.role;
-    if (isEscalationKeyword && activeSession?.id && isStudent) {
+
+    if (isCancelRequest && activeSession?.id && isStudent) {
       fetch(`/api/v1/chats/${activeSession.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "PENDING_ESCALATION" })
+        body: JSON.stringify({ status: "ACTIVE" })
       })
         .then((res) => {
           if (res.ok) {
-            updateSessionStatus(activeSession.id, "PENDING_ESCALATION");
+            updateSessionStatus(activeSession.id, "ACTIVE");
           }
         })
-        .catch(e => console.error("Failed to escalate session", e));
+        .catch(e => console.error("Failed to cancel escalation", e));
+    } else {
+      const isEscalationKeyword =
+        normalizedText.includes("counselor") ||
+        normalizedText.includes("human assistance") ||
+        normalizedText.includes("escalat") ||
+        (normalizedText.includes("connect") && normalizedText.includes("human"));
+
+      if (isEscalationKeyword && activeSession?.id && isStudent) {
+        fetch(`/api/v1/chats/${activeSession.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "PENDING_ESCALATION" })
+        })
+          .then((res) => {
+            if (res.ok) {
+              updateSessionStatus(activeSession.id, "PENDING_ESCALATION");
+            }
+          })
+          .catch(e => console.error("Failed to escalate session", e));
+      }
     }
 
     // Wait! If a counselor has "taken over" this chat, we bypass the AI entirely.

@@ -93,3 +93,24 @@ export function scanForPii(text: string): PiiScanResult {
     detectedTypes,
   };
 }
+
+/**
+ * Replaces any detected PII patterns in the text with a safe redacted placeholder.
+ * @param text - The raw user input.
+ * @returns The redacted text.
+ */
+export function redactPii(text: string): string {
+  let redactedText = text;
+  for (const { label, pattern } of PII_PATTERNS) {
+    const globalPattern = new RegExp(
+      pattern.source,
+      pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g"
+    );
+    redactedText = redactedText.replace(
+      globalPattern,
+      `[${label.toUpperCase().replace(/\s+/g, "_")}_REDACTED]`
+    );
+  }
+  return redactedText;
+}
+

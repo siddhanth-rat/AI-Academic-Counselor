@@ -10,6 +10,7 @@ import { runWithModelsAndRetry } from "@/lib/gemini";
 import { isIpBanned, checkIpRateLimit, checkUserCostBudget } from "@/lib/rate-limit";
 import { verifyCsrf } from "@/lib/csrf";
 import { sanitizeInput } from "@/lib/sanitize";
+import { redactPii } from "@/lib/pii-scanner";
 
 // Force cache refresh
 
@@ -315,10 +316,10 @@ export async function POST(req: NextRequest) {
       
     const isStudent = !profile || profile.role === "STUDENT";
 
-    // 4. Transform the message history into the strict format that Gemini expects
+    // 4. Transform the message history into the strict format that Gemini expects (with PII redaction)
     const contents: any[] = messages.map((m: any) => ({
       role: m.role === "user" ? "user" : "model", // Identify who said what
-      parts: [{ text: sanitizeInput(m.content) }], // Sanitize input content
+      parts: [{ text: m.role === "user" ? redactPii(sanitizeInput(m.content)) : sanitizeInput(m.content) }],
     }));
 
     const systemInstruction = {
@@ -576,7 +577,11 @@ export async function POST(req: NextRequest) {
           const promptLower = userPrompt.toLowerCase();
           const aiLower = finalAiContent.toLowerCase();
 
-          const impliesEscalation = isStudent && (
+          const isCancelRequest =
+            promptLower.includes("cancel") &&
+            (promptLower.includes("escalate") || promptLower.includes("counselor") || promptLower.includes("human") || promptLower.includes("takeover"));
+
+          const impliesEscalation = isStudent && !isCancelRequest && (
             (promptLower.includes("connect") && promptLower.includes("counselor")) ||
             (promptLower.includes("connect") && promptLower.includes("human")) ||
             promptLower.includes("talk to counselor") ||
@@ -594,11 +599,12 @@ export async function POST(req: NextRequest) {
             await sendSSE(JSON.stringify({ id: aiMsgId }));
 
             const estimatedCost = (totalPromptTokens * 0.075 + totalCompletionTokens * 0.30) / 1_000_000;
+            const redactedUserPrompt = redactPii(sanitizeInput(userPrompt));
             try {
               await prisma.$transaction([
                 prisma.message.createMany({
                   data: [
-                    { id: userMsgId, session_id: sessionId, sender_type: "USER", content: sanitizeInput(userPrompt) },
+                    { id: userMsgId, session_id: sessionId, sender_type: "USER", content: redactedUserPrompt },
                     { id: aiMsgId, session_id: sessionId, sender_type: "AI", content: finalAiContent }
                   ]
                 }),
@@ -614,6 +620,11 @@ export async function POST(req: NextRequest) {
                 prisma.session.update({
                   where: { id: sessionId },
                   data: { status: "PENDING_ESCALATION" }
+                })
+              ] : isCancelRequest ? [
+                prisma.session.update({
+                  where: { id: sessionId },
+                  data: { status: "ACTIVE" }
                 })
               ] : [])
             ]);

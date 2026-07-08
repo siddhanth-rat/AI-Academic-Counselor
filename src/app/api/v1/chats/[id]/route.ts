@@ -89,8 +89,8 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     if (typeof title === "string" && title.trim()) {
       data.title = sanitizeInput(title);
     }
-    if (status === "PENDING_ESCALATION") {
-      data.status = "PENDING_ESCALATION";
+    if (status === "PENDING_ESCALATION" || status === "ACTIVE") {
+      data.status = status;
     }
 
     if (Object.keys(data).length === 0) {
