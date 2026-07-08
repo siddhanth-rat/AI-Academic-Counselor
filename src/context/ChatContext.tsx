@@ -34,8 +34,6 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-const STORAGE_KEY = "admission_chatbot_sessions_v1";
-
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { status } = useSession();
   const isLoggedIn = status === "authenticated";
@@ -103,23 +101,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       };
       loadDbSessions();
     } else {
-      // Ephemeral single guest session
-      const initialSession: ChatSession = {
-        id: "guest_session",
-        title: "New Chat",
-        createdAt: new Date().toISOString(),
-        status: "ACTIVE",
-        messages: [],
-      };
-      setSessions([initialSession]);
-      setActiveSessionId("guest_session");
+      setSessions([]);
+      setActiveSessionId("");
     }
   }, [isLoggedIn, isLoaded]);
-
-  // Save to LocalStorage whenever sessions change (only for guests - disabled!)
-  useEffect(() => {
-    // Guest local storage saving is disabled to prevent filling local storage
-  }, [sessions, isLoaded, isLoggedIn]);
 
   const createNewChat = async () => {
     // Prevent creating multiple empty sessions
@@ -151,18 +136,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {
         console.error("Failed to create chat in DB", e);
       }
-    } else {
-      // Guest mode: Reset the single guest session messages to empty!
-      setSessions([
-        {
-          id: "guest_session",
-          title: "New Chat",
-          createdAt: new Date().toISOString(),
-          status: "ACTIVE",
-          messages: [],
-        }
-      ]);
-      setActiveSessionId("guest_session");
     }
   };
 
@@ -184,17 +157,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       if (filtered.length === 0) {
         if (isLoggedIn) {
           createNewChat();
-          return [];
         }
-        const fallback: ChatSession = {
-          id: `session_${Date.now()}`,
-          title: "New Chat",
-          createdAt: new Date().toISOString(),
-          status: "ACTIVE",
-          messages: [],
-        };
-        setActiveSessionId(fallback.id);
-        return [fallback];
+        return [];
       }
       if (activeSessionId === id) {
         setActiveSessionId(filtered[0].id);
@@ -227,7 +191,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           const newMessages = updater(sess.messages);
           let title = sess.title;
           if (title === "New Chat" && shouldGenerateTitle) {
-            title = isLoggedIn ? "Generating title..." : firstUserMsgContent.slice(0, 25) + (firstUserMsgContent.length > 25 ? "..." : "");
+            title = "Generating title...";
           }
           return { ...sess, messages: newMessages, title };
         }
