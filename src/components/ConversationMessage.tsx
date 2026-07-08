@@ -238,7 +238,11 @@ export default function ConversationMessage({ message, viewer, studentName, coun
                             </div>
                           );
                         } catch (e) {
-                          return <pre className={className}><code>{children}</code></pre>;
+                          return (
+                            <div className="not-prose my-3 p-4 rounded-2xl border border-dashed border-[#066AC9]/30 bg-[#066AC9]/5 animate-pulse text-xs font-semibold text-[#066AC9] dark:text-[#0A84FF] flex items-center gap-2">
+                              <span>💬 Preparing options...</span>
+                            </div>
+                          );
                         }
                       }
 
@@ -332,7 +336,11 @@ export default function ConversationMessage({ message, viewer, studentName, coun
                             </div>
                           );
                         } catch (e) {
-                          return <pre className={className}><code>{children}</code></pre>;
+                          return (
+                            <div className="not-prose my-3 p-4 rounded-2xl border border-dashed border-[#066AC9]/30 bg-[#066AC9]/5 animate-pulse text-xs font-semibold text-[#066AC9] dark:text-[#0A84FF] flex items-center gap-2">
+                              <span>🎓 Formulating university recommendations...</span>
+                            </div>
+                          );
                         }
                       }
 
@@ -434,7 +442,11 @@ export default function ConversationMessage({ message, viewer, studentName, coun
                             </div>
                           );
                         } catch (e) {
-                          return <pre className={className}><code>{children}</code></pre>;
+                          return (
+                            <div className="not-prose my-3 p-4 rounded-2xl border border-dashed border-[#066AC9]/30 bg-[#066AC9]/5 animate-pulse text-xs font-semibold text-[#066AC9] dark:text-[#0A84FF] flex items-center gap-2">
+                              <span>📊 Updating admissions roadmap...</span>
+                            </div>
+                          );
                         }
                       }
 
