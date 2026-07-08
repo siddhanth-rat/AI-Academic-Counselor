@@ -117,6 +117,7 @@ export default function ConversationMessage({ message, viewer, studentName, coun
               <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-gray-800 dark:prose-invert">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
+                  urlTransform={(url) => url}
                   components={{
                     a({ href, children, ...props }) {
                       if (href && href.startsWith("citation:")) {
