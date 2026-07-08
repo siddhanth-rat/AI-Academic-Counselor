@@ -21,9 +21,9 @@ async function runTest() {
     if (results.length === 0) {
       console.log("❌ No matching chunks found.");
     } else {
-      results.forEach((text, i) => {
-        console.log(`\n✨ Match #${i + 1}:`);
-        console.log(text.slice(0, 400) + (text.length > 400 ? "..." : ""));
+      results.forEach((match, i) => {
+        console.log(`\n✨ Match #${i + 1} (${match.title}):`);
+        console.log(match.text.slice(0, 400) + (match.text.length > 400 ? "..." : ""));
       });
     }
   }

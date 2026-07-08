@@ -91,18 +91,36 @@ async function executeToolCall(call: any, sessionId: string) {
   if (call.name === "search_vector_store") {
     const query = args.query || "";
     const vectorResults = await searchVectorStore(query);
-    if (vectorResults && vectorResults.length > 0 && !vectorResults[0].includes("unavailable")) {
+    if (vectorResults && vectorResults.length > 0 && vectorResults[0].id !== "unavailable") {
       return { results: vectorResults };
     }
     // Fallback if vector database is empty or returns no matches
     const q = query.toLowerCase();
     if (q.includes("visa") || q.includes("uk")) {
-      return { results: ["UK Student Visa (Tier 4) requires a CAS letter, proof of funds ($1,334/month for London), and a TB test."] };
+      return {
+        results: [{
+          id: "fallback-visa",
+          title: "UK Student Visa Requirements",
+          text: "UK Student Visa (Tier 4) requires a CAS letter, proof of funds ($1,334/month for London), and a TB test."
+        }]
+      };
     }
     if (q.includes("mba") || q.includes("fee")) {
-      return { results: ["The average MBA tuition fee for top universities ranges from $40,000 to $75,000 per year."] };
+      return {
+        results: [{
+          id: "fallback-mba",
+          title: "MBA Tuition Estimates",
+          text: "The average MBA tuition fee for top universities ranges from $40,000 to $75,000 per year."
+        }]
+      };
     }
-    return { results: [`Knowledge base searched for '${query}'. Provide detailed academic insights using established university parameters.`] };
+    return {
+      results: [{
+        id: "fallback-general",
+        title: "Knowledge Base Search",
+        text: `Knowledge base searched for '${query}'. Provide detailed academic insights using established university parameters.`
+      }]
+    };
   }
 
   if (call.name === "compare_universities") {

@@ -60,6 +60,10 @@ const PII_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
     // International format +XX or local 10-digit, with optional separators
     pattern: /(\+?[\d][\d\s\-\(\)]{8,14}\d)/,
   },
+  {
+    label: "Email address",
+    pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/,
+  },
 
   // === Personal Biographic ===
   {

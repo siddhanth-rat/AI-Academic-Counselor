@@ -24,6 +24,7 @@ export default function DashboardPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [isMuted, setIsMuted] = useState(false);
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -120,6 +121,29 @@ export default function DashboardPage() {
     }
   };
 
+  // 5. Generate AI Co-Pilot Draft suggestion
+  const handleGenerateDraft = async () => {
+    if (!selectedSessionId) return;
+    setIsGeneratingDraft(true);
+    try {
+      const res = await fetch("/api/v1/counselor/co-pilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: selectedSessionId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.draft) {
+          setInputText(data.draft);
+        }
+      }
+    } catch (e) {
+      console.error("Co-pilot generation error:", e);
+    } finally {
+      setIsGeneratingDraft(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -181,14 +205,24 @@ export default function DashboardPage() {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
+              disabled={isGeneratingDraft}
               placeholder="Type your message as a counselor..." 
               className="flex-1 px-4 py-2.5 border border-[#B3B3B3] rounded-xl focus:outline-none focus:border-[#066AC9] dark:bg-[#1A1A1A] dark:border-gray-700 dark:text-white text-sm"
             />
             <button 
+              disabled={isGeneratingDraft || !inputText.trim()}
               onClick={handleSendMessage}
-              className="px-6 py-2 bg-[#066AC9] hover:bg-[#055AAB] text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+              className="px-6 py-2 bg-[#066AC9] hover:bg-[#055AAB] text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50"
             >
               Send
+            </button>
+            <button
+              disabled={isGeneratingDraft}
+              onClick={handleGenerateDraft}
+              className="px-4 py-2 border border-[#066AC9] hover:bg-[#066AC9]/5 text-[#066AC9] rounded-xl text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+              title="AI co-pilot suggests a draft response"
+            >
+              {isGeneratingDraft ? "Drafting..." : "🤖 Suggest Draft"}
             </button>
           </div>
         </div>

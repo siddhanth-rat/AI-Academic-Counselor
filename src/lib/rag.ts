@@ -59,11 +59,21 @@ export async function storeVectorDocument(id: string, text: string, metadata: Re
   `;
 }
 
-export async function searchVectorStore(query: string, limit: number = 3) {
+export interface RagSearchResult {
+  id: string;
+  title: string;
+  text: string;
+}
+
+export async function searchVectorStore(query: string, limit: number = 3): Promise<RagSearchResult[]> {
   try {
     const embedding = await generateEmbedding(query);
     if (!embedding.length) {
-      return ["Vector store search unavailable (Missing GEMINI_API_KEY)."];
+      return [{
+        id: "unavailable",
+        title: "System Status",
+        text: "Vector store search unavailable (Missing GEMINI_API_KEY)."
+      }];
     }
 
     const isMock = embedding.every(v => v === 0);
@@ -83,7 +93,11 @@ export async function searchVectorStore(query: string, limit: number = 3) {
         if (results && results.length > 0) {
           return results.map(r => {
             const meta = typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata;
-            return meta.text || JSON.stringify(meta);
+            return {
+              id: r.id,
+              title: meta.title || "Admissions Guide",
+              text: meta.text || JSON.stringify(meta)
+            };
           });
         }
       }
@@ -95,7 +109,11 @@ export async function searchVectorStore(query: string, limit: number = 3) {
       `;
       return results.map(r => {
         const meta = typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata;
-        return meta.text || JSON.stringify(meta);
+        return {
+          id: r.id,
+          title: meta.title || "Admissions Guide",
+          text: meta.text || JSON.stringify(meta)
+        };
       });
     }
 
@@ -114,7 +132,11 @@ export async function searchVectorStore(query: string, limit: number = 3) {
 
     return results.map(r => {
       const meta = typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata;
-      return meta.text || JSON.stringify(meta);
+      return {
+        id: r.id,
+        title: meta.title || "Admissions Guide",
+        text: meta.text || JSON.stringify(meta)
+      };
     });
   } catch (err) {
     console.error("Error searching vector store:", err);
